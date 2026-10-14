@@ -5,6 +5,7 @@
 
 in vec2 a_position;
 
+//Gives the position of the pixel to the fragment shader
 out vec2 v_position;
 
 void main() {

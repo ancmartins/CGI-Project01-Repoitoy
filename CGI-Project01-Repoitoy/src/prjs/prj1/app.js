@@ -253,10 +253,12 @@ function setup(shaders) {
 
     gl.bindVertexArray(null);
 
+    //Getting Uniform Variables from the site_program
     u_site_pan = gl.getUniformLocation(site_program, "u_pan");
     u_site_zoom = gl.getUniformLocation(site_program, "u_zoom");
     u_site_aspect = gl.getUniformLocation(site_program, "u_aspect");
 
+    //Getting Uniform Variables from the quad_program
     u_quad_sites  = gl.getUniformLocation(quad_program, "u_sites");
     u_quad_colors = gl.getUniformLocation(quad_program, "u_colors");
     u_quad_count  = gl.getUniformLocation(quad_program, "u_count");
@@ -282,19 +284,22 @@ function animate(timestamp) {
     // --- 1st draw: the full-screen quad (background) ------------------------
     gl.useProgram(quad_program);
 
+    //Passes the variables of the camera (pan, zoom, aspect) to the quad.frag
     gl.uniform2f(u_quad_pan, pan.x, pan.y);
     gl.uniform1f(u_quad_zoom, zoom);
     gl.uniform1f(u_quad_aspect, canvas.width / canvas.height);
 
+    //Passes the number of sites to the quad.frag 
     gl.uniform1i(u_quad_count, sites.length);
 
     const positions = new Float32Array(sites.flatMap(s => s.pos));
     const colors    = new Float32Array(sites.flatMap(s => s.color));
 
+    //Passes the positions and colors of the sites to the quad.frag
     gl.uniform2fv(u_quad_sites, positions);
     gl.uniform3fv(u_quad_colors, colors);
     gl.bindVertexArray(quad_vao);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 6);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.bindVertexArray(null);
     gl.useProgram(null);
 
