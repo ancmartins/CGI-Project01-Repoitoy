@@ -16,7 +16,6 @@ let site_buffer;        // site positions, re-uploaded every frame
 let u_site_pan;
 let u_site_zoom;
 let u_site_aspect;
-let u_site_colors;
 
 //Uniform locations of quad_program
 let u_quad_sites;
@@ -257,7 +256,6 @@ function setup(shaders) {
     u_site_pan = gl.getUniformLocation(site_program, "u_pan");
     u_site_zoom = gl.getUniformLocation(site_program, "u_zoom");
     u_site_aspect = gl.getUniformLocation(site_program, "u_aspect");
-    u_site_colors = gl.getUniformLocation(site_program, "u_colors");
 
     u_quad_sites  = gl.getUniformLocation(quad_program, "u_sites");
     u_quad_colors = gl.getUniformLocation(quad_program, "u_colors");
@@ -310,8 +308,6 @@ function animate(timestamp) {
     gl.uniform2f(u_site_pan, pan.x, pan.y);
     gl.uniform1f(u_site_zoom, zoom);
     gl.uniform1f(u_site_aspect, canvas.width / canvas.height);
-
-    gl.uniform3fv(u_site_colors, colors);
 
     gl.bindVertexArray(site_vao);
     gl.drawArrays(gl.POINTS, 0, sites.length);

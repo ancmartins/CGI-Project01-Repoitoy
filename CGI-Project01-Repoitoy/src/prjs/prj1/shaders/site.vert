@@ -9,18 +9,10 @@ uniform vec2  u_pan;        // world offset (pan), in world units
 uniform float u_zoom;       // scale factor (> 1 = zoomed in)
 uniform float u_aspect;     // canvas width / height
 
-uniform vec3 u_colors[32];  //Array of uniform colors of all the sites
-
-out vec3 v_color;   //Color of the site to give the fragment shader
-
 void main() {
     float clip_x = (a_position.x + u_pan.x) * u_zoom / u_aspect;   // aspect corrects x only
     float clip_y = (a_position.y + u_pan.y) * u_zoom;
     gl_Position  = vec4(clip_x, clip_y, 0.0, 1.0);
     gl_PointSize = 10.0;    // fixed size in pixels, whatever the zoom
-
-    //Gives the fragment shader the color of the corresponding site
-    //gl_VertexID -> Variable inside of WebGL2 that works like "i" in a for loop in the function gl.drawArrays 
-    v_color = u_colors[gl_VertexID];
 }
 
