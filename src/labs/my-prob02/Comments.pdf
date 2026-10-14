@@ -1,8 +1,0 @@
-gl.drawArrays(gl.POINTS, 0, 3): Cria 3 pontos com os vertices dados;
-
-gl_PointSize = 50.0: O tamanho dos pixels são 50 vezes maiores que o default;
-
-float d = distance(gl_PointCoord, vec2(0.5,0.5))     //Calcula a ditancia entre a coordenada do ponto e o ponto (0.5,0.5)
-if(d > 0.5){
-    discard;
-}
