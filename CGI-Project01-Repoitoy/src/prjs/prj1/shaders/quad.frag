@@ -12,6 +12,10 @@ uniform vec3  u_colors[32];
 //Number of existing sites
 uniform int u_count;
 
+//State that defines the metric used
+//1 is Ecludian, 2 is Manhattan and 3 is Chebyshev
+uniform int u_metric_state;
+
 //world offset (pan), in world units
 uniform vec2  u_pan;
 // scale factor (> 1 = zoomed in)
@@ -20,6 +24,16 @@ uniform float u_zoom;
 uniform float u_aspect;
 
 out vec4 color;
+
+float calculate_distance(vec2 diff){
+    if(u_metric_state == 2){    //Manhattan Distance, sum of the absolute of the distance in the x axis and y axis
+        return abs(diff.x) + abs(diff.y);
+    }
+    else if(u_metric_state == 3){   //Chebyshev Distance, max of the absolute value of the distance in the x axis and y axis
+       return max(abs(diff.x), abs(diff.y));
+    }
+    return sqrt(diff.x * diff.x + diff.y * diff.y);     //Ecludian Distance, square root of the sum of the squared
+}
 
 void main() {
     //1. Base case: there is no sites created
@@ -36,12 +50,12 @@ void main() {
     //3. Defines the first site as the closest 
     int closest_index = 0;
     vec2 diff = world_pos - u_sites[0];     //Displacement vector (dx, dy) of the pixel to the first site
-    float min_dist = sqrt(diff.x * diff.x + diff.y * diff.y);    //Calculates the Euclidean distance of the two points
+    float min_dist = calculate_distance(diff);    //Calculates the Euclidean distance of the two points
 
     //4. Loops over all sites to find the closest
     for(int i = 1; i < u_count; i++){
         diff = world_pos - u_sites[i];
-        float dist = sqrt(diff.x * diff.x + diff.y * diff.y);
+        float dist = calculate_distance(diff);
 
         //4.1. If the current distance is less than the stored one, changes the stored to the current 
         if(dist < min_dist){

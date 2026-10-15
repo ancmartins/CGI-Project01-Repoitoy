@@ -11,6 +11,7 @@ let quad_vao;           // the quad covering the whole viewport
 let site_program;       // draws the site markers
 let site_vao;           // VAO for the site markers
 let site_buffer;        // site positions, re-uploaded every frame
+let metric_state = 1;   //metric state, 1 means Ecludian, 2 means Manhattan, 3 means Chebyshev
 
 // Uniform locations of site_program (looked up once, in setup)
 let u_site_pan;
@@ -24,6 +25,7 @@ let u_quad_count;
 let u_quad_pan;
 let u_quad_zoom;
 let u_quad_aspect;
+let u_metric_state;
 
 // --- Sites ------------------------------------------------------------------
 const MAX_SITES = 32;   // must match MAX_SITES in the shaders that read the sites
@@ -125,11 +127,14 @@ function on_wheel(x, y, dy) {
 
 function on_key(key) {
     switch (key) {
-        case '1':       // Euclidean distance
+        case '1':       // Changes distance metrics to the Euclidean distance
+            metric_state = 1;
             break;
-        case '2':       // Manhattan distance
+        case '2':       // Changes distance metrics to the Manhattan distance
+            metric_state = 2;
             break;
-        case '3':       // Chebyshev distance
+        case '3':       // Changes distance metrics to the Chebyshev distance
+            metric_state = 3;
             break;
         case 'b':       // toggle cell borders
             break;
@@ -265,6 +270,7 @@ function setup(shaders) {
     u_quad_pan    = gl.getUniformLocation(quad_program, "u_pan");
     u_quad_zoom   = gl.getUniformLocation(quad_program, "u_zoom");
     u_quad_aspect = gl.getUniformLocation(quad_program, "u_aspect");
+    u_metric_state = gl.getUniformLocation(quad_program, "u_metric_state");
 
     // --- Window and input ---------------------------------------------------
     resize();
@@ -291,6 +297,9 @@ function animate(timestamp) {
 
     //Passes the number of sites to the quad.frag 
     gl.uniform1i(u_quad_count, sites.length);
+
+    //Passes the current distance metric to the quad.frag
+    gl.uniform1i(u_metric_state, metric_state);
 
     const positions = new Float32Array(sites.flatMap(s => s.pos));
     const colors    = new Float32Array(sites.flatMap(s => s.color));
