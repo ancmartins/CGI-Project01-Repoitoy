@@ -53,8 +53,9 @@ void main() {
 
     //3. Defines the first site as the closest 
     int closest_index = 0;
-    vec2 diff = world_pos - u_sites[0];     //Displacement vector (dx, dy) of the pixel to the first site
-    float d1 = calculate_distance(diff);    //Calculates the Euclidean distance of the two points
+    int second_closest_index = 0;
+    vec2 diff = world_pos - u_sites[0];
+    float d1 = calculate_distance(diff);
     float d2 = 1e5;
 
 // 4. Loops over all sites to find the true d1 and d2
@@ -63,20 +64,36 @@ void main() {
         float dist = calculate_distance(diff);
 
         if (dist < d1) {
-            // Atualiza o novo 1.º mais próximo
             d2 = d1;
+            second_closest_index = closest_index; // Recuperado para saber o 2.º ponto
+            
             d1 = dist;
             closest_index = i;
-        } else if (dist < d2){
+        } else if (dist < d2){  //Is the second greatest weakness
             d2 = dist;
+            second_closest_index = i; // Recuperado
         }
     }
 
-    float eps = BORDER_WIDTH / u_zoom;
-    
-    if (u_show_borders == 1 && u_count > 1 && abs(d1 - d2) < eps) {
-        color = vec4(1.0, 1.0, 1.0, 1.0);   // o enunciado sugere branco
-        return;
+if (u_show_borders == 1 && u_count > 1) {
+        float eps = BORDER_WIDTH / u_zoom;
+        
+        // Compensação geométrica para a Euclidiana (evita o alargamento em triângulo)
+        vec2 s1 = u_sites[closest_index];
+        vec2 s2 = u_sites[second_closest_index];
+        float D = calculate_distance(s1 - s2);
+            
+         // Fórmula correta: multiplica por D e DIVIDE por (d1 + d2)
+        eps = (eps * D) / (d1 + d2 + 0.0001); 
+        
+        float diff_d = abs(d1 - d2);
+        
+        // diff_d < eps: desenha a borda
+        // diff_d > 0.0001: ignora os empates perfeitos que causam manchas em Manhattan/Chebyshev
+        if (diff_d < eps) {
+            color = vec4(1.0, 1.0, 1.0, 1.0); 
+            return;
+        }
     }
         //5. Defines the final color of the pixel
         color = vec4(u_colors[closest_index], 1.0);
