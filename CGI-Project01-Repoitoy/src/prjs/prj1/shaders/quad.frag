@@ -5,12 +5,16 @@ precision highp float;
 //Coordinates coming from the vertex shader in Clip Space (-1, 1)
 in vec2 v_position;
 
+const float BORDER_WIDTH = 0.01;
+
 //Positions of all the sites(in world coordinates)
 uniform vec2  u_sites[32];
 //Color of all the sites
 uniform vec3  u_colors[32];
 //Number of existing sites
 uniform int u_count;
+
+uniform int u_show_borders;
 
 //State that defines the metric used
 //1 is Ecludian, 2 is Manhattan and 3 is Chebyshev
@@ -50,20 +54,30 @@ void main() {
     //3. Defines the first site as the closest 
     int closest_index = 0;
     vec2 diff = world_pos - u_sites[0];     //Displacement vector (dx, dy) of the pixel to the first site
-    float min_dist = calculate_distance(diff);    //Calculates the Euclidean distance of the two points
+    float d1 = calculate_distance(diff);    //Calculates the Euclidean distance of the two points
+    float d2 = 1e5;
 
-    //4. Loops over all sites to find the closest
-    for(int i = 1; i < u_count; i++){
+// 4. Loops over all sites to find the true d1 and d2
+    for (int i = 1; i < u_count; i++) {
         diff = world_pos - u_sites[i];
         float dist = calculate_distance(diff);
 
-        //4.1. If the current distance is less than the stored one, changes the stored to the current 
-        if(dist < min_dist){
-            min_dist = dist;
+        if (dist < d1) {
+            // Atualiza o novo 1.º mais próximo
+            d2 = d1;
+            d1 = dist;
             closest_index = i;
+        } else if (dist < d2){
+            d2 = dist;
         }
     }
 
-    //5. Defines the final color of the pixel
-    color = vec4(u_colors[closest_index], 1.0);
+    float eps = BORDER_WIDTH / u_zoom;
+    
+    if (u_show_borders == 1 && u_count > 1 && abs(d1 - d2) < eps) {
+        color = vec4(1.0, 1.0, 1.0, 1.0);   // o enunciado sugere branco
+        return;
+    }
+        //5. Defines the final color of the pixel
+        color = vec4(u_colors[closest_index], 1.0);
 }

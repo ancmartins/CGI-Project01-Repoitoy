@@ -12,6 +12,7 @@ let site_program;       // draws the site markers
 let site_vao;           // VAO for the site markers
 let site_buffer;        // site positions, re-uploaded every frame
 let metric_state = 1;   //metric state, 1 means Ecludian, 2 means Manhattan, 3 means Chebyshev
+let show_borders = 0;
 
 // Uniform locations of site_program (looked up once, in setup)
 let u_site_pan;
@@ -26,6 +27,7 @@ let u_quad_pan;
 let u_quad_zoom;
 let u_quad_aspect;
 let u_metric_state;
+let u_quad_show_borders;
 
 // --- Sites ------------------------------------------------------------------
 const MAX_SITES = 32;   // must match MAX_SITES in the shaders that read the sites
@@ -137,6 +139,7 @@ function on_key(key) {
             metric_state = 3;
             break;
         case 'b':       // toggle cell borders
+            show_borders = 1 - show_borders;
             break;
         case 'x': {     // remove the site nearest the pointer
             if (mouse_down) break;      // not in the middle of a drag (indices would shift)
@@ -271,6 +274,7 @@ function setup(shaders) {
     u_quad_zoom   = gl.getUniformLocation(quad_program, "u_zoom");
     u_quad_aspect = gl.getUniformLocation(quad_program, "u_aspect");
     u_metric_state = gl.getUniformLocation(quad_program, "u_metric_state");
+    u_quad_show_borders = gl.getUniformLocation(quad_program, "u_show_borders");
 
     // --- Window and input ---------------------------------------------------
     resize();
@@ -300,6 +304,7 @@ function animate(timestamp) {
 
     //Passes the current distance metric to the quad.frag
     gl.uniform1i(u_metric_state, metric_state);
+    gl.uniform1i(u_quad_show_borders, show_borders);
 
     const positions = new Float32Array(sites.flatMap(s => s.pos));
     const colors    = new Float32Array(sites.flatMap(s => s.color));
