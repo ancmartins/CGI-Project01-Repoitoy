@@ -11,15 +11,13 @@ let quad_vao;           // the quad covering the whole viewport
 let site_program;       // draws the site markers
 let site_vao;           // VAO for the site markers
 let site_buffer;        // site positions, re-uploaded every frame
-let metric_state = 1;   //metric state, 1 means Ecludian, 2 means Manhattan, 3 means Chebyshev
+let metric_state = 1;   //metric state, 1 means Euclidean, 2 means Manhattan, 3 means Chebyshev
 let show_borders = 0;
 
 //---- Technique 2 Variables ----------------
 let render_technique = 1;   //1 - Shader 2D, 2 - Geometry 3D
 let depth_program;          //Program that uses the shaders of second technique 
-let depth_vao;              // Vao of the second technique
-let depth_vertex_count = 0; //Number of 3D vertices of one unique piramide
-let depth_vbo;              //Stores the local vertices of the piramid/cone 
+let depth_vao;              // Vao of the second technique (dummy to call the gl.drawArraysInstanced())
 
 // Uniform locations of site_program (looked up once, in setup)
 let u_site_pan;             // Pan of the world
@@ -33,7 +31,6 @@ let depth_pan;              // Pan of the world
 let depth_zoom;             // Zoom of the world
 let depth_aspect;           // Aspect of the world
 let depth_metrics;          // Metric of the distance
-
 
 //Uniform locations of quad_program
 let u_quad_sites;           // Array of all the sites positions
@@ -261,7 +258,7 @@ function setup(shaders) {
     gl.enableVertexAttribArray(a_position);
     gl.vertexAttribPointer(a_position, 2, gl.FLOAT, false, 0, 0);
 
-    gl.bindVertexArray(null);
+    gl.bindVertexArray(null);   // Turns of the VAO of the quad
 
     // --- Site markers -------------------------------------------------------
     site_vao = gl.createVertexArray();
@@ -277,7 +274,7 @@ function setup(shaders) {
     gl.enableVertexAttribArray(a_site_position);
     gl.vertexAttribPointer(a_site_position, 2, gl.FLOAT, false, 0, 0);
 
-    gl.bindVertexArray(null);
+    gl.bindVertexArray(null);   //Turns off the sites program
 
     //Getting Uniform Variables from the site_program
     u_site_pan = gl.getUniformLocation(site_program, "u_pan");
@@ -294,7 +291,8 @@ function setup(shaders) {
     u_metric_state = gl.getUniformLocation(quad_program, "u_metric_state");
     u_quad_show_borders = gl.getUniformLocation(quad_program, "u_show_borders");
 
-    // ------ Depth Markers -----------------------------------------------------
+    // ------ Depth Buffer -----------------------------------------------------
+    // depth_vao is created because WebGL needs one to call gl.drawArrayInstanced
     depth_vao = gl.createVertexArray();
 
     //Gets uniform variables from the depth program
@@ -318,14 +316,16 @@ function setup(shaders) {
 function animate(timestamp) {
     window.requestAnimationFrame(animate);
 
-    //Clears the depth_buffer and color buffet
+    //Clears the depth_buffer and color buffet at every frame
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     const aspect = canvas.width / canvas.height;
+
+    //Converts the list of objects into 2 different Float32Array
     const positions = new Float32Array(sites.flatMap(s => s.pos));
     const colors    = new Float32Array(sites.flatMap(s => s.color));
 
-    if( render_technique === 1){    //Calculation in the fragment shader
+    if( render_technique === 1){ 
         // --- 1st draw: the full-screen quad (background) ------------------------
         gl.useProgram(quad_program);
 
@@ -337,20 +337,27 @@ function animate(timestamp) {
         //Passes the number of sites to the quad.frag 
         gl.uniform1i(u_quad_count, sites.length);
 
-        //Passes the current distance metric to the quad.frag
+        //Passes the current distance metric and the border to the quad.frag
         gl.uniform1i(u_metric_state, metric_state);
         gl.uniform1i(u_quad_show_borders, show_borders);
 
         //Passes the positions and colors of the sites to the quad.frag
         gl.uniform2fv(u_quad_sites, positions);
         gl.uniform3fv(u_quad_colors, colors);
+
+        //Draws the quad that covers all the canvas 
         gl.bindVertexArray(quad_vao);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        //Clears the ative state
         gl.bindVertexArray(null);
         gl.useProgram(null);
     }
-    
-    else{
+
+    else{ 
+        //---- Technique 2 - 3D Geometry + Depth Buffer ------------------------------------
+
+
         //Enables depth in the GPU and function used is Less depth
         //In case of a pixel is in two site pyramids, wins the one with the < z (less depth)
         gl.enable(gl.DEPTH_TEST);
@@ -373,14 +380,17 @@ function animate(timestamp) {
 
         //Sides is 64 if Ecludian, 4 otherwise
         const sides = (metric_state == 1) ? 64 : 4;
+
+        // 3 vertices for every side (Triangle)
         const vertex_count = sides * 3;
 
-        //Draws the triangles
+        //Draws the triangles with one only count, doesn't need a for loop like the drawArrays
         gl.drawArraysInstanced(gl.TRIANGLES, 0, vertex_count, sites.length);
 
         gl.bindVertexArray(null);
         gl.useProgram(null);
     }
+    //---- Drawing of the Sites ---------------------------------------------------------------
 
     //Turns of the depth so the points don't be cut by the piramids/cones 
     gl.disable(gl.DEPTH_TEST);
@@ -396,9 +406,11 @@ function animate(timestamp) {
     gl.uniform1f(u_site_zoom, zoom);
     gl.uniform1f(u_site_aspect, aspect);
 
-    //
+    
     gl.bindVertexArray(site_vao);
     gl.drawArrays(gl.POINTS, 0, sites.length);
+    
+    
     gl.bindVertexArray(null);
     gl.useProgram(null);
 }
