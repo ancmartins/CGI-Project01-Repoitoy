@@ -161,7 +161,7 @@ function on_key(key) {
             break;
         }
         case 'm':       // switch rendering technique / split view
-            render_technique = (render_technique == 1) ? 2 : 1;
+            render_technique = (render_technique % 3) + 1;
             break;
     }
 }
@@ -179,12 +179,26 @@ function get_random_color() {
 // Converts a canvas pixel (y growing downwards) into world coordinates.
 // This is the exact inverse of the world -> clip transform in site.vert.
 function screen_to_world(px, py) {
-    const aspect = canvas.width / canvas.height;
+    let ndc_x, ndc_y, aspect
 
     // 1. Pixels -> normalized device coordinates, from -1 to 1 (y flipped)
-    const ndc_x = (2.0 * px / canvas.width) - 1.0;
-    const ndc_y = 1.0 - (2.0 * py / canvas.height);
+    if(render_technique == 3){
+        const half_w = canvas.width / 2;
 
+        const local_x = px % half_w;
+
+        ndc_x = (local_x / half_w) * 2.0 - 1;
+        ndc_y = 1.0 - (py / canvas.height) * 2.0;
+
+        aspect = half_w / canvas.height;
+    }
+    else{
+        ndc_x = (2.0 * px / canvas.width) - 1.0;
+        ndc_y = 1.0 - (2.0 * py / canvas.height);
+
+        aspect = canvas.width / canvas.height;
+    }
+    
     // 2. Undo the aspect ratio correction (x only), the zoom and the pan
     const world_x = (ndc_x * aspect) / zoom - pan.x;
     const world_y = ndc_y / zoom - pan.y;
@@ -313,85 +327,72 @@ function setup(shaders) {
     window.requestAnimationFrame(animate);
 }
 
-function animate(timestamp) {
-    window.requestAnimationFrame(animate);
+function drawTechnique1(v_aspect, positions, colors){
+    gl.useProgram(quad_program);
 
-    //Clears the depth_buffer and color buffet at every frame
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+     //Passes the variables of the camera (pan, zoom, aspect) to the quad.frag
+     gl.uniform2f(u_quad_pan, pan.x, pan.y);
+     gl.uniform1f(u_quad_zoom, zoom);
+     gl.uniform1f(u_quad_aspect, v_aspect);
 
-    const aspect = canvas.width / canvas.height;
+    //Passes the number of sites to the quad.frag 
+    gl.uniform1i(u_quad_count, sites.length);
 
-    //Converts the list of objects into 2 different Float32Array
-    const positions = new Float32Array(sites.flatMap(s => s.pos));
-    const colors    = new Float32Array(sites.flatMap(s => s.color));
+    //Passes the current distance metric and the border to the quad.frag
+    gl.uniform1i(u_metric_state, metric_state);
+    gl.uniform1i(u_quad_show_borders, show_borders);
 
-    if( render_technique === 1){ 
-        // --- 1st draw: the full-screen quad (background) ------------------------
-        gl.useProgram(quad_program);
+    //Passes the positions and colors of the sites to the quad.frag
+    gl.uniform2fv(u_quad_sites, positions);
+    gl.uniform3fv(u_quad_colors, colors);
 
-        //Passes the variables of the camera (pan, zoom, aspect) to the quad.frag
-        gl.uniform2f(u_quad_pan, pan.x, pan.y);
-        gl.uniform1f(u_quad_zoom, zoom);
-        gl.uniform1f(u_quad_aspect, canvas.width / canvas.height);
+    //Draws the quad that covers all the canvas 
+    gl.bindVertexArray(quad_vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-        //Passes the number of sites to the quad.frag 
-        gl.uniform1i(u_quad_count, sites.length);
+    //Clears the ative state
+    gl.bindVertexArray(null);
+    gl.useProgram(null);
+}
 
-        //Passes the current distance metric and the border to the quad.frag
-        gl.uniform1i(u_metric_state, metric_state);
-        gl.uniform1i(u_quad_show_borders, show_borders);
-
-        //Passes the positions and colors of the sites to the quad.frag
-        gl.uniform2fv(u_quad_sites, positions);
-        gl.uniform3fv(u_quad_colors, colors);
-
-        //Draws the quad that covers all the canvas 
-        gl.bindVertexArray(quad_vao);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-        //Clears the ative state
-        gl.bindVertexArray(null);
-        gl.useProgram(null);
-    }
-
-    else{ 
-        //---- Technique 2 - 3D Geometry + Depth Buffer ------------------------------------
+function drawTechnique2(v_aspect, positions, colors){
+    //---- Technique 2 - 3D Geometry + Depth Buffer ------------------------------------
 
 
-        //Enables depth in the GPU and function used is Less depth
-        //In case of a pixel is in two site pyramids, wins the one with the < z (less depth)
-        gl.enable(gl.DEPTH_TEST);
-        gl.depthFunc(gl.LESS);
+    //Enables depth in the GPU and function used is Less depth
+    //In case of a pixel is in two site pyramids, wins the one with the < z (less depth)
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LESS);
 
-        //Switches program
-        gl.useProgram(depth_program);
+    //Switches program
+    gl.useProgram(depth_program);
 
-        // Gives the sites and metric to the vertex shader
-        gl.uniform2fv(depth_sites, positions);
-        gl.uniform3fv(depth_colors, colors);
-        gl.uniform1i(depth_metrics, metric_state);
+    // Gives the sites and metric to the vertex shader
+    gl.uniform2fv(depth_sites, positions);
+    gl.uniform3fv(depth_colors, colors);
+    gl.uniform1i(depth_metrics, metric_state);
 
-        //Passes the variables of the camera (pan, zoom, aspect)
-        gl.uniform2f(depth_pan, pan.x, pan.y);
-        gl.uniform1f(depth_zoom, zoom);
-        gl.uniform1f(depth_aspect, aspect);
+    //Passes the variables of the camera (pan, zoom, aspect)
+    gl.uniform2f(depth_pan, pan.x, pan.y);
+    gl.uniform1f(depth_zoom, zoom);
+    gl.uniform1f(depth_aspect, v_aspect);
 
-        gl.bindVertexArray(depth_vao);
+    gl.bindVertexArray(depth_vao);
 
-        //Sides is 64 if Ecludian, 4 otherwise
-        const sides = (metric_state == 1) ? 64 : 4;
+    //Sides is 64 if Ecludian, 4 otherwise
+    const sides = (metric_state == 1) ? 64 : 4;
 
-        // 3 vertices for every side (Triangle)
-        const vertex_count = sides * 3;
+    // 3 vertices for every side (Triangle)
+    const vertex_count = sides * 3;
 
-        //Draws the triangles with one only count, doesn't need a for loop like the drawArrays
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, vertex_count, sites.length);
+    //Draws the triangles with one only count, doesn't need a for loop like the drawArrays
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, vertex_count, sites.length);
 
-        gl.bindVertexArray(null);
-        gl.useProgram(null);
-    }
-    //---- Drawing of the Sites ---------------------------------------------------------------
+    gl.bindVertexArray(null);
+    gl.useProgram(null);
+}
 
+function drawSites(v_aspect, positions){
     //Turns of the depth so the points don't be cut by the piramids/cones 
     gl.disable(gl.DEPTH_TEST);
 
@@ -404,7 +405,7 @@ function animate(timestamp) {
     //Passes the variables of the camera (pan, zoom, aspect)
     gl.uniform2f(u_site_pan, pan.x, pan.y);
     gl.uniform1f(u_site_zoom, zoom);
-    gl.uniform1f(u_site_aspect, aspect);
+    gl.uniform1f(u_site_aspect, v_aspect);
 
     
     gl.bindVertexArray(site_vao);
@@ -413,6 +414,65 @@ function animate(timestamp) {
     
     gl.bindVertexArray(null);
     gl.useProgram(null);
+}
+
+function animate(timestamp) {
+    window.requestAnimationFrame(animate);
+
+    //Clears the depth_buffer and color buffet at every frame
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    const w = canvas.width;
+    const h = canvas.height;
+    const aspect = canvas.width / canvas.height;
+
+    //Converts the list of objects into 2 different Float32Array
+    const positions = new Float32Array(sites.flatMap(s => s.pos));
+    const colors    = new Float32Array(sites.flatMap(s => s.color));
+
+    gl.viewport(0,0,w,h);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    if( render_technique == 1){ 
+        // --- Technique 1 - Calculates the nearest site in the fragment shader -------------
+        drawTechnique1(aspect, positions, colors);
+        drawSites(aspect, positions);
+    }
+    else if(render_technique == 2){
+        //---- Technique 2 - 3D Geometry + Depth Buffer ------------------------------------ 
+        
+        drawTechnique2(aspect, positions, colors);
+        drawSites(aspect, positions);
+    }
+    else{
+        //---- Technique 3 - Split View (Tecnique 1 | Technique 2)
+
+        const half_w = Math.floor(w / 2);
+        const half_aspect = half_w / h; // Aspect ratio recalculated to half the screen
+
+        //Activates the Scissor Test
+        gl.enable(gl.SCISSOR_TEST);
+
+        //Defines the view as the left side
+        gl.viewport(0, 0, half_w, h);
+        gl.scissor(0, 0, half_w, h);
+
+        // Draws the first technique
+        drawTechnique1(half_aspect, positions, colors);
+        drawSites(half_aspect, positions);
+
+        //Defines the view as the right side
+        gl.viewport(half_w, 0, w - half_w, h);
+        gl.scissor(half_w, 0, w - half_w, h);
+
+        // Draws the second technique
+        drawTechnique2(half_aspect, positions, colors);
+        drawSites(half_aspect, positions);
+
+        // Disables the Scissor Test and defines the viewport as the full screen
+        gl.disable(gl.SCISSOR_TEST);
+        gl.viewport(0, 0, w, h);
+    }
 }
 
 loadShadersFromURLS(["quad.vert", "quad.frag", "site.vert", "site.frag", "depth.vert", "depth.frag"]).then(shaders => setup(shaders));
