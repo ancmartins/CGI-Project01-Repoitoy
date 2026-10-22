@@ -12,7 +12,7 @@ uniform float u_zoom;
 uniform float u_aspect;
 uniform int u_metric; // 1: Euclidiana, 2: Manhattan, 3: Chebyshev
 
-const float R_MAX = 20.0;
+const float R_MAX = 1000.0;
 const float PI = 3.14159265359;
 
 out vec3 v_color;
@@ -54,7 +54,7 @@ vec3 getRimVertex(int index, int total_sides) {
 }
 
 void main() {
-    
+
     // 1. Discovers the cureent site through the gl_InstaceID 
     int site_idx = gl_InstanceID;
     vec2 site_pos = u_sites[site_idx];
