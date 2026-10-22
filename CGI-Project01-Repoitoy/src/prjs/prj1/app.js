@@ -14,20 +14,36 @@ let site_buffer;        // site positions, re-uploaded every frame
 let metric_state = 1;   //metric state, 1 means Ecludian, 2 means Manhattan, 3 means Chebyshev
 let show_borders = 0;
 
+//---- Technique 2 Variables ----------------
+let render_technique = 1;   //1 - Shader 2D, 2 - Geometry 3D
+let depth_program;          //Program that uses the shaders of second technique 
+let depth_vao;              // Vao of the second technique
+let depth_vertex_count = 0; //Number of 3D vertices of one unique piramide
+let depth_vbo;              //Stores the local vertices of the piramid/cone 
+
 // Uniform locations of site_program (looked up once, in setup)
-let u_site_pan;
-let u_site_zoom;
-let u_site_aspect;
+let u_site_pan;             // Pan of the world
+let u_site_zoom;            // Zoom of the world
+let u_site_aspect;          // Aspect of the world
+
+//Uniform location of the depth_program
+let depth_sites;            // Array of all the sites positions
+let depth_colors;           // Array of all the sites colors
+let depth_pan;              // Pan of the world
+let depth_zoom;             // Zoom of the world
+let depth_aspect;           // Aspect of the world
+let depth_metrics;          // Metric of the distance
+
 
 //Uniform locations of quad_program
-let u_quad_sites;
-let u_quad_colors;
-let u_quad_count;
-let u_quad_pan;
-let u_quad_zoom;
-let u_quad_aspect;
-let u_metric_state;
-let u_quad_show_borders;
+let u_quad_sites;           // Array of all the sites positions
+let u_quad_colors;          // Array of all the sites colors
+let u_quad_count;           // Number of current sites
+let u_quad_pan;             // Pan of the world
+let u_quad_zoom;            // Zoom of the world
+let u_quad_aspect;          // Aspect of the world
+let u_metric_state;         // Metric of the distance
+let u_quad_show_borders;    // Variable to show borders 
 
 // --- Sites ------------------------------------------------------------------
 const MAX_SITES = 32;   // must match MAX_SITES in the shaders that read the sites
@@ -37,7 +53,7 @@ let sites = [];         // each site: { pos: [x, y] (world coords), color: [r, g
 let pan = { x: 0.0, y: 0.0 };   // world offset, in world units
 let zoom = 1.0;                 // scale factor (> 1 = zoomed in)
 const ZOOM_STEP = 1.1;          // each wheel notch zooms in/out by 10%
-const MIN_ZOOM = 0.01;          // zoom limits, to avoid floating-point precision problems
+const MIN_ZOOM = 0.5;          // zoom limits, to avoid floating-point precision problems
 const MAX_ZOOM = 1000.0;
 
 // --- Mouse state ------------------------------------------------------------
@@ -129,13 +145,13 @@ function on_wheel(x, y, dy) {
 
 function on_key(key) {
     switch (key) {
-        case '1':       // Changes distance metrics to the Euclidean distance
+        case '1':       // Changes distance metrics to the Euclidean distance and updates the depth_vbo with its mesh
             metric_state = 1;
             break;
-        case '2':       // Changes distance metrics to the Manhattan distance
+        case '2':       // Changes distance metrics to the Manhattan distance and updates the depth_vbo with its mesh
             metric_state = 2;
             break;
-        case '3':       // Changes distance metrics to the Chebyshev distance
+        case '3':       // Changes distance metrics to the Chebyshev distance and updates the depth_vbo with its mesh
             metric_state = 3;
             break;
         case 'b':       // toggle cell borders
@@ -148,6 +164,7 @@ function on_key(key) {
             break;
         }
         case 'm':       // switch rendering technique / split view
+            render_technique = (render_technique == 1) ? 2 : 1;
             break;
     }
 }
@@ -223,6 +240,7 @@ function setup(shaders) {
 
     quad_program = buildProgramFromSources(gl, shaders["quad.vert"], shaders["quad.frag"]);
     site_program = buildProgramFromSources(gl, shaders["site.vert"], shaders["site.frag"]);
+    depth_program = buildProgramFromSources(gl, shaders["depth.vert"], shaders["depth.frag"]);
 
     // --- Quad ---------------------------------------------------------------
     // A quad covering the whole viewport, as two triangles: its corners are
@@ -276,6 +294,17 @@ function setup(shaders) {
     u_metric_state = gl.getUniformLocation(quad_program, "u_metric_state");
     u_quad_show_borders = gl.getUniformLocation(quad_program, "u_show_borders");
 
+    // ------ Depth Markers -----------------------------------------------------
+    depth_vao = gl.createVertexArray();
+
+    //Gets uniform variables from the depth program
+    depth_sites = gl.getUniformLocation(depth_program, "u_sites");
+    depth_colors    = gl.getUniformLocation(depth_program, "u_colors");
+    depth_metrics = gl.getUniformLocation(depth_program, "u_metric");
+    depth_pan      = gl.getUniformLocation(depth_program, "u_pan");
+    depth_zoom     = gl.getUniformLocation(depth_program, "u_zoom");
+    depth_aspect   = gl.getUniformLocation(depth_program, "u_aspect");
+
     // --- Window and input ---------------------------------------------------
     resize();
     window.addEventListener("resize", resize);
@@ -289,49 +318,89 @@ function setup(shaders) {
 function animate(timestamp) {
     window.requestAnimationFrame(animate);
 
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    //Clears the depth_buffer and color buffet
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    // --- 1st draw: the full-screen quad (background) ------------------------
-    gl.useProgram(quad_program);
-
-    //Passes the variables of the camera (pan, zoom, aspect) to the quad.frag
-    gl.uniform2f(u_quad_pan, pan.x, pan.y);
-    gl.uniform1f(u_quad_zoom, zoom);
-    gl.uniform1f(u_quad_aspect, canvas.width / canvas.height);
-
-    //Passes the number of sites to the quad.frag 
-    gl.uniform1i(u_quad_count, sites.length);
-
-    //Passes the current distance metric to the quad.frag
-    gl.uniform1i(u_metric_state, metric_state);
-    gl.uniform1i(u_quad_show_borders, show_borders);
-
+    const aspect = canvas.width / canvas.height;
     const positions = new Float32Array(sites.flatMap(s => s.pos));
     const colors    = new Float32Array(sites.flatMap(s => s.color));
 
-    //Passes the positions and colors of the sites to the quad.frag
-    gl.uniform2fv(u_quad_sites, positions);
-    gl.uniform3fv(u_quad_colors, colors);
-    gl.bindVertexArray(quad_vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-    gl.bindVertexArray(null);
-    gl.useProgram(null);
+    if( render_technique === 1){    //Calculation in the fragment shader
+        // --- 1st draw: the full-screen quad (background) ------------------------
+        gl.useProgram(quad_program);
 
-    // --- 2nd draw: the site markers, on top ---------------------------------
-    // Upload the current positions, flattened as [x0, y0, x1, y1, ...]
+        //Passes the variables of the camera (pan, zoom, aspect) to the quad.frag
+        gl.uniform2f(u_quad_pan, pan.x, pan.y);
+        gl.uniform1f(u_quad_zoom, zoom);
+        gl.uniform1f(u_quad_aspect, canvas.width / canvas.height);
+
+        //Passes the number of sites to the quad.frag 
+        gl.uniform1i(u_quad_count, sites.length);
+
+        //Passes the current distance metric to the quad.frag
+        gl.uniform1i(u_metric_state, metric_state);
+        gl.uniform1i(u_quad_show_borders, show_borders);
+
+        //Passes the positions and colors of the sites to the quad.frag
+        gl.uniform2fv(u_quad_sites, positions);
+        gl.uniform3fv(u_quad_colors, colors);
+        gl.bindVertexArray(quad_vao);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+    }
+    
+    else{
+        //Enables depth in the GPU and function used is Less depth
+        //In case of a pixel is in two site pyramids, wins the one with the < z (less depth)
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
+
+        //Switches program
+        gl.useProgram(depth_program);
+
+        // Gives the sites and metric to the vertex shader
+        gl.uniform2fv(depth_sites, positions);
+        gl.uniform3fv(depth_colors, colors);
+        gl.uniform1i(depth_metrics, metric_state);
+
+        //Passes the variables of the camera (pan, zoom, aspect)
+        gl.uniform2f(depth_pan, pan.x, pan.y);
+        gl.uniform1f(depth_zoom, zoom);
+        gl.uniform1f(depth_aspect, aspect);
+
+        gl.bindVertexArray(depth_vao);
+
+        //Sides is 64 if Ecludian, 4 otherwise
+        const sides = (metric_state == 1) ? 64 : 4;
+        const vertex_count = sides * 3;
+
+        //Draws the triangles
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, vertex_count, sites.length);
+
+        gl.bindVertexArray(null);
+        gl.useProgram(null);
+    }
+
+    //Turns of the depth so the points don't be cut by the piramids/cones 
+    gl.disable(gl.DEPTH_TEST);
+
     gl.bindBuffer(gl.ARRAY_BUFFER, site_buffer);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, positions);
 
-    // Same view parameters as screen_to_world, so clicks and drawing agree
+    //Switches program to write the points
     gl.useProgram(site_program);
+
+    //Passes the variables of the camera (pan, zoom, aspect)
     gl.uniform2f(u_site_pan, pan.x, pan.y);
     gl.uniform1f(u_site_zoom, zoom);
-    gl.uniform1f(u_site_aspect, canvas.width / canvas.height);
+    gl.uniform1f(u_site_aspect, aspect);
 
+    //
     gl.bindVertexArray(site_vao);
     gl.drawArrays(gl.POINTS, 0, sites.length);
     gl.bindVertexArray(null);
     gl.useProgram(null);
 }
 
-loadShadersFromURLS(["quad.vert", "quad.frag", "site.vert", "site.frag"]).then(shaders => setup(shaders));
+loadShadersFromURLS(["quad.vert", "quad.frag", "site.vert", "site.frag", "depth.vert", "depth.frag"]).then(shaders => setup(shaders));

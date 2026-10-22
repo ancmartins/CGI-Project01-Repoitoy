@@ -58,34 +58,35 @@ void main() {
     float d1 = calculate_distance(diff);
     float d2 = 1e5;
 
-// 4. Loops over all sites to find the true d1 and d2
+    // 4. Loops over all sites to find the true d1 and d2
     for (int i = 1; i < u_count; i++) {
         diff = world_pos - u_sites[i];
         float dist = calculate_distance(diff);
 
         if (dist < d1) {
             d2 = d1;
-            second_closest_index = closest_index; // Recuperado para saber o 2.º ponto
+            second_closest_index = closest_index; // The old min_dist is the 2nd 
             
             d1 = dist;
             closest_index = i;
         } else if (dist < d2){  //Is the second greatest weakness
             d2 = dist;
-            second_closest_index = i; // Recuperado
+            second_closest_index = i;
         }
     }
 
-if (u_show_borders == 1 && u_count > 1) {
-        float eps = BORDER_WIDTH / u_zoom;
+    //5. Draws the borders if active
+    if (u_show_borders == 1 && u_count > 1) {
         
-        // Compensação geométrica para a Euclidiana (evita o alargamento em triângulo)
+        // Finds the two closest sites to the pixel and calculates its distance
         vec2 s1 = u_sites[closest_index];
         vec2 s2 = u_sites[second_closest_index];
         float D = calculate_distance(s1 - s2);
             
-         // Fórmula correta: multiplica por D e DIVIDE por (d1 + d2)
-        eps = (eps * D) / (d1 + d2 + 0.0001); 
+         // Calculates the epsilon, considering the distance to the point and zoom
+        float eps = (BORDER_WIDTH * D) / ((d1 + d2) * u_zoom); 
         
+        //Calculates |d1 - d2|
         float diff_d = abs(d1 - d2);
         
         // diff_d < eps: desenha a borda
